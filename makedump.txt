@@ -1,0 +1,18 @@
+REGISTER piggybank.jar
+
+DEFINE XPath org.apache.pig.piggybank.evaluation.xml.XPath();
+
+DEFINE XPathAll org.apache.pig.piggybank.evaluation.xml.XPathAll();
+
+
+A =  LOAD 'container/revisionSamplebig.xml' using org.apache.pig.piggybank.storage.XMLLoader('page') as (x:chararray);
+
+
+
+B = FOREACH A GENERATE XPath(x, 'page/title'), XPathAll(x, 'page/revision/timestamp'), XPathAll(x, 'page/revision/text/@bytes', true, false)), XPathAll(x, 'page/revision/contributor/username');
+
+
+
+DUMP B;
+
+store B into 'panos/' using PigStorage('$');
