@@ -3,28 +3,87 @@ Before running this scala script:
 Get the following package:
 $SPARK_HOME/bin/spark-shell --packages com.databricks:spark-xml_2.11:0.5.0
 
+
 Part 1: Import the XML file.
 
 import org.apache.spark.sql.SparkSession
 import com.databricks.spark.xml._
 
 val spark = SparkSession.builder.getOrCreate()
-val df = spark.read
-  .option("rowTag", "page")
-  .xml("container/parcel.xml")
+val df = spark.read.option("rowTag", "page").xml("container/larger.xml")
 
-val selectedColumns= df.select("title","revision")
+
+val chosen = df.select(df.col("title"), df.col("revision.text._VALUE"))
+
 
 
 Part 2: Make the regex pattern:
-
+#Importing a few things 
 val pattern = "Category(.*?)[]]".r
 
-#Importing a few things 
+
 import scala.util.matching.Regex
+
+val pattern: String = "Category(.*?)[]]"
+val groupIdx: Int = 1
+val dre=chosen.withColumn("domain", regexp_extract(chosen("_VALUE"), pattern, groupIdx)).drop("_VALUE")
+
+dre.show()
+dre.coalesce(1).write.csv("biggerdre.csv")
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+#############################THIS IS FOR REVISION HISTORY #####################################
+
+
+import org.apache.spark.sql.SparkSession
+import com.databricks.spark.xml._
+
+val spark = SparkSession.builder.getOrCreate()
+val df = spark.read.option("rowTag", "page").xml("container/rbig.xml")
+
+val chosen=df.select(df.col("title"),explode(col("revision").as("details")))
+val chosen2 = chosen.select(chosen.col("title"),chosen.col("col.timestamp"),chosen.col("col.text._bytes"),chosen.col("col.minor"))
+chosen2.show()
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------
+################################ MAKE A FILE WRITE FASTER ################################################
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs._
+
+def merge(srcPath: String, dstPath: String): Unit =  {
+   val hadoopConfig = new Configuration()
+   val hdfs = FileSystem.get(hadoopConfig)
+   FileUtil.copyMerge(hdfs, new Path(srcPath), hdfs, new Path(dstPath), true, hadoopConfig, null) 
+   // the "true" setting deletes the source files once they are merged into the new output
+}
+
+
+val newData = << create your dataframe >>
+
+
+val outputfile = "container"  
+var filename = "myinsights"
+var outputFileName = outputfile + "/temp_" + filename 
+var mergedFileName = outputfile + "/merged_" + filename
+var mergeFindGlob  = outputFileName
+
+newData.write.format("com.databricks.spark.csv").option("header", "false").mode("overwrite").save(outputFileName)
+merge(mergeFindGlob, mergedFileName )
+newData.unpersist()
+
+
+
+
+
+
+################################## EXTRA CODES IGNORE THEM #######################################
+val selectedColumns= df.select("title","revision")
+dre1.withColumn("id", monotonically_increasing_id()).join(dre2.withColumn("id", monotonically_increasing_id()), Seq("id")).drop("id").show
 import scala.collection.mutable.ListBuffer
 
-def extractFromRegex (regex: Regex, line:String): Array[String] = {
+def extractFromRegex (regex: Regex, line:Column): Array[String] = {
    val list =  ListBuffer[String]()
    for(m <- regex.findAllIn(line).matchData;
       e <- m.subgroups)
@@ -36,5 +95,7 @@ var chunk : String = "This is a  long \n string with [[Category: Random ]] and \
 
 extractFromRegex(pattern,chunk)
 
-
+def applyRegex(col: Column):Column = {
+  extractFromRegex(pattern,col)
+}
 
